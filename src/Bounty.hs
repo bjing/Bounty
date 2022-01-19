@@ -80,6 +80,7 @@ PlutusTx.makeLift ''Destination
 data Collection = Collection
     { votes       :: ![PubKeyHash]
     , destination :: !Destination
+    , cValue      :: !Value
     } deriving (Show, Generic, FromJSON, ToJSON)
 
 PlutusTx.makeIsDataIndexed ''Collection [ ('Collection, 0) ]
@@ -165,15 +166,17 @@ solidCollection b c =
       length correctVotes == length (votes c) &&
       enoughVotes
 
-{-# INLINABLE correctCollection #-}
+{-# INLINABLE correctCollection #-} -- We need to modify this part to test for the value specified by the collection voted upon.
 correctCollection :: TxOut -> Collection -> Bool
-correctCollection o c = case (destination c) of
-  Person pkh -> case (addressCredential (txOutAddress o)) of
-    PubKeyCredential opkh -> pkh == opkh
-    _                     -> False
-  ScriptH vh -> case (addressCredential (txOutAddress o)) of
-    ScriptCredential ovh  -> vh == ovh
-    _                     -> False
+correctCollection o c =
+  (txOutValue o) == (cValue c) &&
+  case (destination c) of
+    Person pkh -> case (addressCredential (txOutAddress o)) of
+      PubKeyCredential opkh -> pkh == opkh
+      _                     -> False
+    ScriptH vh -> case (addressCredential (txOutAddress o)) of
+      ScriptCredential ovh  -> vh == ovh
+      _                     -> False
 
 -- We need to make sure that the spending path is correct for the PotDatum TxOut TODO
 {-# INLINABLE validateUseOfPot #-}
