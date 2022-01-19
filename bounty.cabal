@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               plutus-starter
+name:               bounty
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -13,8 +13,8 @@ version:            0.1.0.0
 
 license: Apache-2.0
 license-files: LICENSE
-author:             Your name
-maintainer:         Your email
+author:             R
+maintainer:         Riley-Kilgore@github.com
 
 -- A copyright notice.
 -- copyright:
@@ -41,8 +41,8 @@ common lang
 library
     import: lang
     exposed-modules:
-      MyModule
-      Plutus.Contracts.Game
+      Bounty
+      CollectionMaker
     build-depends:
       base >= 4.9 && < 5,
       aeson,
@@ -54,43 +54,5 @@ library
       plutus-tx-plugin,
       plutus-tx,
       plutus-ledger,
-    hs-source-dirs: src examples/src
-
-test-suite plutus-example-projects-test
-  import: lang
-  type: exitcode-stdio-1.0
-  main-is: Spec.hs
-  hs-source-dirs: examples/test
-  other-modules:
-    Spec.Game
-  build-depends:
-    plutus-tx -any,
-    plutus-tx-plugin,
-    plutus-contract -any,
-    plutus-ledger -any,
-    plutus-starter -any
-  build-depends:
-    base >=4.9 && <5,
-    tasty -any,
-    tasty-hunit -any,
-    tasty-hedgehog >=0.2.0.0
-
-executable plutus-starter-pab
-  import: lang
-  main-is: Main.hs
-  hs-source-dirs: pab
-  ghc-options:
-    -threaded
-  build-depends:
-    base >= 4.9 && < 5,
-    data-default -any,
-    plutus-contract -any,
-    plutus-pab -any,
-    plutus-starter -any,
-    aeson -any,
-    freer-simple -any,
-    prettyprinter -any,
-    freer-extras -any,
-    plutus-ledger -any,
-    openapi3 -any,
-
+      text
+    hs-source-dirs: src
