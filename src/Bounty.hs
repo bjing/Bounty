@@ -58,12 +58,14 @@ import           Data.String          (IsString (..))
 import           Data.Aeson           (ToJSON, FromJSON)
 import           Data.List              (union, intersect)
 
-data Bounty = Bounty
-    { expiration           :: !POSIXTime
-    , voters               :: ![PubKeyHash]
+-- If the proposal is an update then it can have a new validatorhash to spend to.
+data Bounty = Bounty -- Add treasury validator here TODO and that way we can make sure the value comes from here and the identity nft goes back to the contract.
+    { voters               :: ![PubKeyHash]
     , requiredVotes        :: !Integer
     , collectionMakerClass :: !AssetClass
-    , collectionToken :: !AssetClass
+    , collectionToken      :: !AssetClass
+    , spendFrom            :: !ValidatorHash
+    , identityNft          :: !AssetClass
     } deriving (Show, Generic, FromJSON, ToJSON)
 
 PlutusTx.makeIsDataIndexed ''Bounty [ ('Bounty, 0) ]
@@ -79,7 +81,7 @@ PlutusTx.makeLift ''Destination
 
 data Collection = Collection
     { votes       :: ![PubKeyHash]
-    , destination :: !Destination
+    , destination :: !PubKeyHash
     , cValue      :: !Value
     } deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -166,16 +168,13 @@ solidCollection b c =
       length correctVotes == length (votes c) &&
       enoughVotes
 
-{-# INLINABLE correctCollection #-} -- We need to modify this part to test for the value specified by the collection voted upon.
-correctCollection :: TxOut -> Collection -> Bool
+{-# INLINABLE correctCollection #-} -- TODO We need to modify this part to test for the value specified by the collection voted upon.
+-- TODO this also needs modifications for making sure that the identity NFT comes back and the payout is from the treasury.
+correctCollection :: TxOut -> Collection -> Bool -- o is the identityNFT, make sure it contains and make sure it continues.
 correctCollection o c =
   (txOutValue o) == (cValue c) &&
-  case (destination c) of
-    Person pkh -> case (addressCredential (txOutAddress o)) of
-      PubKeyCredential opkh -> pkh == opkh
-      _                     -> False
-    ScriptH vh -> case (addressCredential (txOutAddress o)) of
-      ScriptCredential ovh  -> vh == ovh
+  case (addressCredential (txOutAddress o)) of
+      PubKeyCredential opkh -> (destination c) == opkh
       _                     -> False
 
 -- We need to make sure that the spending path is correct for the PotDatum TxOut TODO
@@ -296,7 +295,9 @@ checkSpending ctx bounty =
     potBox = potDatum txInfo potTxOut
     txInValues = [txOutValue $ txInInfoResolved txIn | txIn <- txIns]
   in
-    validateUseOfPot bounty potTxOut potBox datumBox
+    validateUseOfPot bounty potTxOut potBox datumBox &&
+    (collectionMinted ctx (collectionToken bounty)) == -1
+
 
 -- We only can have one CollectionDatum/Token - We need to implement these - definitely.
 -- We only can have one 
