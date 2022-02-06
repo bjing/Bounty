@@ -28,33 +28,11 @@
 
 module CollectionMaker where
 
-import           Control.Monad        hiding (fmap)
-import           Data.Aeson           (FromJSON, ToJSON)
-import qualified Data.Map             as Map
-import           Data.String          (IsString (..))
-import           Data.Text            (Text)
-import           Data.Void            (Void)
-import           GHC.Generics         (Generic)
 import           Ledger               hiding (singleton)
-import           Ledger.Ada           as Ada
-import           Ledger.Constraints   as Constraints
-import qualified Ledger.Contexts      as Validation
-import           Ledger.Index         as Index
 import qualified Ledger.Typed.Scripts as Scripts
 import           Ledger.Value         as Value
-import           Playground.Contract  (NonEmpty (..), ToSchema,
-                                       ensureKnownCurrencies, printJson,
-                                       printSchemas, stage)
-import           Playground.TH        (ensureKnownCurrencies, mkKnownCurrencies,
-                                       mkSchemaDefinitions)
-import           Playground.Types     (KnownCurrency (..))
-import           Plutus.Contract      as Contract
 import qualified PlutusTx
-import           PlutusTx.IsData
-import           PlutusTx.Maybe
 import           PlutusTx.Prelude     hiding (Semigroup (..), unless)
-import           Prelude              (Semigroup (..), Show, String, show)
-import           Text.Printf          (printf)
 
 {-# INLINABLE mkPolicy #-}
 mkPolicy :: AssetClass -> BuiltinData -> ScriptContext -> Bool
@@ -64,18 +42,18 @@ mkPolicy asset _ ctx =
   where
     txInfo = scriptContextTxInfo ctx
     txInValues = [txOutValue $ txInInfoResolved txIn | txIn <- txInfoInputs $ scriptContextTxInfo ctx]
-    txOuts = txInfoOutputs txInfo
     nftValues = [assetClassValueOf val asset | val <- txInValues]
     nftSum = sum nftValues
     mintedAmount = case flattenValue (txInfoMint txInfo) of
-      [(cs, collectionTokenName, amt)] | cs == ownCurrencySymbol ctx -> amt
-      _                                                              -> 0
+        [(cs, _, amt)] | cs == ownCurrencySymbol ctx -> amt
+        _                                            -> 0
 
 policy :: AssetClass -> Scripts.MintingPolicy
 policy asset =
   mkMintingPolicyScript $
     $$(PlutusTx.compile [||Scripts.wrapMintingPolicy . mkPolicy||])
-      `PlutusTx.applyCode` PlutusTx.liftCode asset
+    `PlutusTx.applyCode`
+    PlutusTx.liftCode asset
 
 curSymbol :: AssetClass -> CurrencySymbol
 curSymbol asset = scriptCurrencySymbol $ policy asset
