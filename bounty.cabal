@@ -43,10 +43,12 @@ library
     exposed-modules:
       Bounty
       CollectionMaker
+      Deployer
     build-depends:
       base >= 4.9 && < 5,
       aeson,
       bytestring,
+      cardano-api,
       containers,
       freer-extras,
       playground-common,
@@ -54,5 +56,6 @@ library
       plutus-tx-plugin,
       plutus-tx,
       plutus-ledger,
+      serialise,
       text
     hs-source-dirs: src
