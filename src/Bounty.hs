@@ -42,11 +42,11 @@ import           PlutusTx.Prelude     hiding (Semigroup (..), unless)
 import           Prelude              (Show)
 
 data Bounty = Bounty
-  { expiration           :: !POSIXTime,
-    voters               :: ![PubKeyHash],
-    requiredVotes        :: !Integer,
-    collectionMakerClass :: !AssetClass,
-    collectionToken      :: !AssetClass
+  { bExpiration           :: !POSIXTime,
+    bVoters               :: ![PubKeyHash],
+    bRequiredVotes        :: !Integer,
+    bCollectionMakerClass :: !AssetClass,
+    bCollectionToken      :: !AssetClass
   }
   deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -64,8 +64,8 @@ PlutusTx.makeIsDataIndexed
 PlutusTx.makeLift ''Destination
 
 data Collection = Collection
-  { votes       :: ![PubKeyHash],
-    destination :: !Destination
+  { cVotes       :: ![PubKeyHash],
+    cDestination :: !Destination
   }
   deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -106,8 +106,8 @@ instance Scripts.ValidatorTypes Bountying where
 {-# INLINABLE findBountyDatum #-}
 findBountyDatum :: TxInfo -> TxOut -> Maybe BountyDatum
 findBountyDatum txInfo o = do
-  datumHash <- txOutDatum o
-  Datum d <- findDatum datumHash txInfo
+  dh <- txOutDatum o
+  Datum d <- findDatum dh txInfo
   PlutusTx.fromBuiltinData d
 
 -- Asset Related Functions
@@ -118,16 +118,16 @@ collectionMinted ctx collectionAsset =
    in assetClassValueOf mintVal collectionAsset
 
 {-# INLINABLE assetContinues #-}
-assetContinues :: ScriptContext -> [TxOut] -> AssetClass -> Bool
-assetContinues ctx continuingOutputs asset =
+assetContinues :: [TxOut] -> AssetClass -> Bool
+assetContinues continuingOutputs asset =
   sum [assetClassValueOf (txOutValue x) asset | x <- continuingOutputs] > 0
 
 -- Voting Arithmetic Functions
 {-# INLINABLE validateCollectionChange #-}
 validateCollectionChange :: TxInfo -> [PubKeyHash] -> BountyDatum -> Maybe BountyDatum -> Bool
-validateCollectionChange info voters before mafter = case mafter of
-  Just (CollectionDatum c) -> case before of
-    CollectionDatum k -> validateKeyChanges info voters (votes k) (votes c)
+validateCollectionChange info voters votesBefore maybeDatumAfter = case maybeDatumAfter of
+  Just (CollectionDatum c) -> case votesBefore of
+    CollectionDatum k -> validateKeyChanges info voters (cVotes k) (cVotes c)
     _                 -> False
   _ -> False
 
@@ -135,14 +135,14 @@ validateCollectionChange info voters before mafter = case mafter of
 {-# INLINABLE solidCollection #-}
 solidCollection :: Bounty -> Collection -> Bool
 solidCollection b c =
-  let enoughVotes = (requiredVotes b) <= (length (votes c))
-      correctVotes = [a | a <- (votes c), elem a (voters b)] -- filterVotes (voters b) (votes c)
-   in length correctVotes == length (votes c)
+  let enoughVotes = (bRequiredVotes b) <= (length (cVotes c))
+      correctVotes = [a | a <- (cVotes c), elem a (bVoters b)] -- filterVotes (voters b) (votes c)
+   in length correctVotes == length (cVotes c)
         && enoughVotes
 
 {-# INLINABLE correctCollection #-}
 correctCollection :: TxOut -> Collection -> Bool
-correctCollection o c = case (destination c) of
+correctCollection o c = case (cDestination c) of
   Person pkh -> case (addressCredential (txOutAddress o)) of
     PubKeyCredential opkh -> pkh == opkh
     _                     -> False
@@ -163,10 +163,10 @@ validateUseOfPot _ _ _ _ = False
 -- - All new voters have signed the tx.
 {-# INLINABLE validateKeyChanges #-}
 validateKeyChanges :: TxInfo -> [PubKeyHash] -> [PubKeyHash] -> [PubKeyHash] -> Bool
-validateKeyChanges info voters before after =
-  let newVotes = [a | a <- after, elem a voters]
-      compVal = [a | a <- after, elem a before]
-   in compVal == before
+validateKeyChanges info voters votesBefore votesAfter =
+  let newVotes = [a | a <- votesAfter, elem a voters]
+      compVal = [a | a <- votesAfter, elem a votesBefore]
+   in compVal == votesBefore
         && all (txSignedBy info) newVotes
 
 -- High-Level Functions -- ehh lmao
@@ -192,7 +192,7 @@ getOutputPDatum info txOuts = find (containsPot info) txOuts
 {-# INLINABLE startCollectionDatum #-}
 startCollectionDatum :: Maybe BountyDatum -> Bool
 startCollectionDatum md = case md of
-  Just (CollectionDatum c) -> length (votes c) == 0
+  Just (CollectionDatum c) -> length (cVotes c) == 0
   _                        -> False
 
 {-# INLINABLE validMakerDatum #-}
@@ -211,15 +211,15 @@ validPotDatum md = case md of
 -- - CollectionDatum value starts with an empty voter list.
 -- -
 {-# INLINABLE checkCreateCollection #-}
-checkCreateCollection :: ScriptContext -> BountyDatum -> AssetClass -> AssetClass -> Bool
-checkCreateCollection ctx collection makerAsset collectionAsset =
+checkCreateCollection :: ScriptContext -> AssetClass -> AssetClass -> Bool
+checkCreateCollection ctx makerAsset collectionAsset =
   let txInfo = scriptContextTxInfo ctx
-      outputs = txInfoOutputs txInfo
+      txOuts = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumMaker = findOutputForClass makerAsset outputs >>= findBountyDatum txInfo
-      datumBox = findOutputForClass collectionAsset outputs >>= findBountyDatum txInfo
-   in assetContinues ctx continuingOutputs makerAsset
-        && assetContinues ctx continuingOutputs collectionAsset
+      datumMaker = findOutputForClass makerAsset txOuts >>= findBountyDatum txInfo
+      datumBox = findOutputForClass collectionAsset txOuts >>= findBountyDatum txInfo
+   in assetContinues continuingOutputs makerAsset
+        && assetContinues continuingOutputs collectionAsset
         && (collectionMinted ctx collectionAsset) == 1
         && startCollectionDatum datumBox
         && validMakerDatum datumMaker
@@ -230,10 +230,10 @@ checkCreateCollection ctx collection makerAsset collectionAsset =
 checkVoteApplication :: ScriptContext -> AssetClass -> BountyDatum -> [PubKeyHash] -> Bool
 checkVoteApplication ctx collectionAsset datum voters =
   let txInfo = scriptContextTxInfo ctx
-      outputs = txInfoOutputs txInfo
+      txOuts = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumBox = findOutputForClass collectionAsset outputs >>= findBountyDatum txInfo
-   in assetContinues ctx continuingOutputs collectionAsset
+      datumBox = findOutputForClass collectionAsset txOuts >>= findBountyDatum txInfo
+   in assetContinues continuingOutputs collectionAsset
         && validateCollectionChange txInfo voters datum datumBox
 
 -- - Are there enough voters in the list
@@ -243,13 +243,10 @@ checkVoteApplication ctx collectionAsset datum voters =
 checkSpending :: ScriptContext -> Bounty -> Bool
 checkSpending ctx bounty =
   let txInfo = scriptContextTxInfo ctx
-      txIns = txInfoInputs txInfo
-      outputs = txInfoOutputs txInfo
-      continuingOutputs = getContinuingOutputs ctx
-      datumBox = findOutputForClass (collectionToken bounty) outputs >>= findBountyDatum txInfo
-      potTxOut = getOutputPDatum txInfo outputs
+      txOuts = txInfoOutputs txInfo
+      datumBox = findOutputForClass (bCollectionToken bounty) txOuts >>= findBountyDatum txInfo
+      potTxOut = getOutputPDatum txInfo txOuts
       potBox = potTxOut >>= findBountyDatum txInfo
-      txInValues = [txOutValue $ txInInfoResolved txIn | txIn <- txIns]
    in validateUseOfPot bounty potTxOut potBox datumBox
 
 -- We only can have one CollectionDatum/Token - We need to implement these - definitely.
@@ -259,10 +256,10 @@ checkSpending ctx bounty =
 bountyScript :: Bounty -> BountyDatum -> BountyAction -> ScriptContext -> Bool
 bountyScript bounty datum action ctx = case datum of
   CollectionMaker -> case action of
-    CreateCollection c -> checkCreateCollection ctx datum (collectionMakerClass bounty) (collectionToken bounty)
+    CreateCollection _ -> checkCreateCollection ctx (bCollectionMakerClass bounty) (bCollectionToken bounty)
     _ -> False
-  CollectionDatum c -> case action of
-    ApplyVote -> checkVoteApplication ctx (collectionMakerClass bounty) datum (voters bounty)
+  CollectionDatum _ -> case action of
+    ApplyVote -> checkVoteApplication ctx (bCollectionMakerClass bounty) datum (bVoters bounty)
     SpendAction -> checkSpending ctx bounty
     _ -> False
   PotDatum -> case action of
