@@ -31,33 +31,15 @@ module Bounty where
 
 import           Control.Monad        hiding (fmap)
 import           Data.Aeson           (FromJSON, ToJSON)
-import           Data.List            (intersect, union)
-import qualified Data.Map             as Map
-import           Data.String          (IsString (..))
-import           Data.Text            (Text)
-import           Data.Void            (Void)
 import           GHC.Generics         (Generic)
 import           Ledger               hiding (singleton)
-import           Ledger.Ada           as Ada
-import           Ledger.Constraints   as Constraints
-import qualified Ledger.Contexts      as Validation
 import           Ledger.Credential
-import           Ledger.Index         as Index
 import qualified Ledger.Typed.Scripts as Scripts
 import           Ledger.Value         as Value
-import           Playground.Contract  (NonEmpty (..), ToSchema,
-                                       ensureKnownCurrencies, printJson,
-                                       printSchemas, stage)
-import           Playground.TH        (ensureKnownCurrencies, mkKnownCurrencies,
-                                       mkSchemaDefinitions)
-import           Playground.Types     (KnownCurrency (..))
-import           Plutus.Contract      as Contract
 import qualified PlutusTx
-import           PlutusTx.IsData
 import           PlutusTx.Maybe
 import           PlutusTx.Prelude     hiding (Semigroup (..), unless)
-import           Prelude              (Semigroup (..), Show, String, show)
-import           Text.Printf          (printf)
+import           Prelude              (Show)
 
 data Bounty = Bounty
   { expiration           :: !POSIXTime,
