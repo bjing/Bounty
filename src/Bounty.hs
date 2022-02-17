@@ -121,9 +121,9 @@ instance Scripts.ValidatorTypes Bountying where
 
 -- Datum Related Functions:
 
-{-# INLINABLE getBountyDatum #-}
-getBountyDatum :: TxInfo -> TxOut -> Maybe BountyDatum
-getBountyDatum txInfo o = do
+{-# INLINABLE findBountyDatum #-}
+findBountyDatum :: TxInfo -> TxOut -> Maybe BountyDatum
+findBountyDatum txInfo o = do
   datumHash <- txOutDatum o
   Datum d <- findDatum datumHash txInfo
   PlutusTx.fromBuiltinData d
@@ -199,7 +199,7 @@ findOutputForClass asset = find $ \o -> containsClass o asset
 {-# INLINABLE containsPot #-}
 containsPot :: TxInfo -> TxOut -> Bool
 containsPot info o =
-  case getBountyDatum info o of
+  case findBountyDatum info o of
     Just PotDatum -> True
     _             -> False
 
@@ -234,8 +234,8 @@ checkCreateCollection ctx collection makerAsset collectionAsset =
   let txInfo = scriptContextTxInfo ctx
       outputs = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumMaker = findOutputForClass makerAsset outputs >>= getBountyDatum txInfo
-      datumBox = findOutputForClass collectionAsset outputs >>= getBountyDatum txInfo
+      datumMaker = findOutputForClass makerAsset outputs >>= findBountyDatum txInfo
+      datumBox = findOutputForClass collectionAsset outputs >>= findBountyDatum txInfo
    in assetContinues ctx continuingOutputs makerAsset
         && assetContinues ctx continuingOutputs collectionAsset
         && (collectionMinted ctx collectionAsset) == 1
@@ -250,7 +250,7 @@ checkVoteApplication ctx collectionAsset datum voters =
   let txInfo = scriptContextTxInfo ctx
       outputs = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumBox = findOutputForClass collectionAsset outputs >>= getBountyDatum txInfo
+      datumBox = findOutputForClass collectionAsset outputs >>= findBountyDatum txInfo
    in assetContinues ctx continuingOutputs collectionAsset
         && validateCollectionChange txInfo voters datum datumBox
 
@@ -264,9 +264,9 @@ checkSpending ctx bounty =
       txIns = txInfoInputs txInfo
       outputs = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumBox = findOutputForClass (collectionToken bounty) outputs >>= getBountyDatum txInfo
+      datumBox = findOutputForClass (collectionToken bounty) outputs >>= findBountyDatum txInfo
       potTxOut = getOutputPDatum txInfo outputs
-      potBox = potTxOut >>= getBountyDatum txInfo
+      potBox = potTxOut >>= findBountyDatum txInfo
       txInValues = [txOutValue $ txInInfoResolved txIn | txIn <- txIns]
    in validateUseOfPot bounty potTxOut potBox datumBox
 
