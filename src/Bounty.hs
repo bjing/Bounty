@@ -121,48 +121,27 @@ instance Scripts.ValidatorTypes Bountying where
 
 -- Datum Related Functions:
 
-{-# INLINABLE collectionDatum #-}
-collectionDatum :: TxInfo -> TxOut -> Maybe BountyDatum
-collectionDatum txInfo o = do
-  dh <- txOutDatum o
-  Datum d <- findDatum dh txInfo
-  PlutusTx.fromBuiltinData d
-
-{-# INLINABLE collectionMaker #-}
-collectionMaker :: TxInfo -> TxOut -> Maybe BountyDatum
-collectionMaker txInfo o = do
-  dh <- txOutDatum o
-  Datum d <- findDatum dh txInfo
-  PlutusTx.fromBuiltinData d
-
-{-# INLINABLE potDatum #-}
-potDatum :: TxInfo -> TxOut -> Maybe BountyDatum
-potDatum txInfo o = do
-  dh <- txOutDatum o
-  Datum d <- findDatum dh txInfo
-  PlutusTx.fromBuiltinData d
-
-{-# INLINEABLE getBountyDatum #-}
+{-# INLINABLE getBountyDatum #-}
 getBountyDatum :: TxInfo -> TxOut -> Maybe BountyDatum
 getBountyDatum txInfo o = do
-  dh <- txOutDatum o
-  Datum d <- findDatum dh txInfo
+  datumHash <- txOutDatum o
+  Datum d <- findDatum datumHash txInfo
   PlutusTx.fromBuiltinData d
 
 -- Asset Related Functions
-{-# INLINEABLE collectionMinted #-}
+{-# INLINABLE collectionMinted #-}
 collectionMinted :: ScriptContext -> AssetClass -> Integer
 collectionMinted ctx collectionAsset =
   let mintVal = txInfoMint $ scriptContextTxInfo ctx
    in assetClassValueOf mintVal collectionAsset
 
-{-# INLINEABLE assetContinues #-}
+{-# INLINABLE assetContinues #-}
 assetContinues :: ScriptContext -> [TxOut] -> AssetClass -> Bool
 assetContinues ctx continuingOutputs asset =
   sum [assetClassValueOf (txOutValue x) asset | x <- continuingOutputs] > 0
 
 -- Voting Arithmetic Functions
-{-# INLINEABLE validateCollectionChange #-}
+{-# INLINABLE validateCollectionChange #-}
 validateCollectionChange :: TxInfo -> [PubKeyHash] -> BountyDatum -> Maybe BountyDatum -> Bool
 validateCollectionChange info voters before mafter = case mafter of
   Just (CollectionDatum c) -> case before of
@@ -171,7 +150,7 @@ validateCollectionChange info voters before mafter = case mafter of
   _ -> False
 
 -- This need to reflect false when we don't have enough votes or if the votes are incorrect.
-{-# INLINEABLE solidCollection #-}
+{-# INLINABLE solidCollection #-}
 solidCollection :: Bounty -> Collection -> Bool
 solidCollection b c =
   let enoughVotes = (requiredVotes b) <= (length (votes c))
@@ -179,7 +158,7 @@ solidCollection b c =
    in length correctVotes == length (votes c)
         && enoughVotes
 
-{-# INLINEABLE correctCollection #-}
+{-# INLINABLE correctCollection #-}
 correctCollection :: TxOut -> Collection -> Bool
 correctCollection o c = case (destination c) of
   Person pkh -> case (addressCredential (txOutAddress o)) of
@@ -190,20 +169,17 @@ correctCollection o c = case (destination c) of
     _                    -> False
 
 -- We need to make sure that the spending path is correct for the PotDatum TxOut TODO
-{-# INLINEABLE validateUseOfPot #-}
-validateUseOfPot :: Bounty -> TxOut -> Maybe BountyDatum -> Maybe BountyDatum -> Bool
-validateUseOfPot bounty potTxOut mpot mcollection = case mpot of
-  Just m -> case mcollection of
-    Just (CollectionDatum c) ->
-      solidCollection bounty c
-        && correctCollection potTxOut c
-    _ -> False
-  _ -> False
+{-# INLINABLE validateUseOfPot #-}
+validateUseOfPot :: Bounty -> Maybe TxOut -> Maybe BountyDatum -> Maybe BountyDatum -> Bool
+-- validateUseOfPot bounty mPotTxOut mpot mcollection = case mpot of
+validateUseOfPot bounty (Just potTxOut) (Just _) (Just (CollectionDatum c)) =
+  solidCollection bounty c && correctCollection potTxOut c
+validateUseOfPot _ _ _ _ = False
 
 -- This needs to check that
 -- - Only valid voters are counted
 -- - All new voters have signed the tx.
-{-# INLINEABLE validateKeyChanges #-}
+{-# INLINABLE validateKeyChanges #-}
 validateKeyChanges :: TxInfo -> [PubKeyHash] -> [PubKeyHash] -> [PubKeyHash] -> Bool
 validateKeyChanges info voters before after =
   let newVotes = [a | a <- after, elem a voters]
@@ -212,62 +188,54 @@ validateKeyChanges info voters before after =
         && all (txSignedBy info) newVotes
 
 -- High-Level Functions -- ehh lmao
-{-# INLINEABLE containsClass #-}
+{-# INLINABLE containsClass #-}
 containsClass :: TxOut -> AssetClass -> Bool
 containsClass o a = (assetClassValueOf (txOutValue o) a) > 0
 
-{-# INLINEABLE getOutput #-}
-getOutput :: [TxOut] -> AssetClass -> TxOut
-getOutput txOuts asset = case [o | o <- txOuts, containsClass o asset] of
-  [x] -> x
-  _   -> traceError "Fail here."
+{-# INLINABLE findOutputForClass #-}
+findOutputForClass :: AssetClass -> [TxOut] -> Maybe TxOut
+findOutputForClass asset = find $ \o -> containsClass o asset
 
-{-# INLINEABLE containsPot #-}
+{-# INLINABLE containsPot #-}
 containsPot :: TxInfo -> TxOut -> Bool
 containsPot info o =
-  let d = getBountyDatum info o
-   in case d of
-        Just PotDatum -> True
-        _             -> False
+  case getBountyDatum info o of
+    Just PotDatum -> True
+    _             -> False
 
-{-# INLINEABLE getOutputPDatum #-}
-getOutputPDatum :: TxInfo -> [TxOut] -> TxOut
-getOutputPDatum info txOuts = case [o | o <- txOuts, containsPot info o] of
-  [x] -> x
-  _   -> traceError "Fail here."
+{-# INLINABLE getOutputPDatum #-}
+getOutputPDatum :: TxInfo -> [TxOut] -> Maybe TxOut
+getOutputPDatum info txOuts = find (containsPot info) txOuts
 
-{-# INLINEABLE startCollectionDatum #-}
+{-# INLINABLE startCollectionDatum #-}
 startCollectionDatum :: Maybe BountyDatum -> Bool
 startCollectionDatum md = case md of
-  Just (CollectionDatum c) ->
-    length (votes c) == 0
-  _ -> False
+  Just (CollectionDatum c) -> length (votes c) == 0
+  _                        -> False
 
-{-# INLINEABLE validMakerDatum #-}
+{-# INLINABLE validMakerDatum #-}
 validMakerDatum :: Maybe BountyDatum -> Bool
 validMakerDatum md = case md of
-  Just CollectionMaker ->
-    True
-  _ -> False
+  Just CollectionMaker -> True
+  _                    -> False
 
-{-# INLINEABLE validPotDatum #-}
+{-# INLINABLE validPotDatum #-}
 validPotDatum :: Maybe BountyDatum -> Bool
 validPotDatum md = case md of
-  Just PotDatum ->
-    True
-  _ -> False
+  Just PotDatum -> True
+  _             -> False
 
 -- - Collection maker class come and go
 -- - CollectionDatum value starts with an empty voter list.
 -- -
-{-# INLINEABLE checkCreateCollection #-}
+{-# INLINABLE checkCreateCollection #-}
 checkCreateCollection :: ScriptContext -> BountyDatum -> AssetClass -> AssetClass -> Bool
 checkCreateCollection ctx collection makerAsset collectionAsset =
   let txInfo = scriptContextTxInfo ctx
       outputs = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumMaker = getBountyDatum txInfo (getOutput outputs makerAsset)
-      datumBox = getBountyDatum txInfo (getOutput outputs collectionAsset)
+      datumMaker = findOutputForClass makerAsset outputs >>= getBountyDatum txInfo
+      datumBox = findOutputForClass collectionAsset outputs >>= getBountyDatum txInfo
    in assetContinues ctx continuingOutputs makerAsset
         && assetContinues ctx continuingOutputs collectionAsset
         && (collectionMinted ctx collectionAsset) == 1
@@ -276,36 +244,36 @@ checkCreateCollection ctx collection makerAsset collectionAsset =
 
 -- - For each pubkeyhash being added to the application must have signed.
 -- - None of the pubkeyhashes added can be the same as eachother or the values in the list.
-{-# INLINEABLE checkVoteApplication #-}
+{-# INLINABLE checkVoteApplication #-}
 checkVoteApplication :: ScriptContext -> AssetClass -> BountyDatum -> [PubKeyHash] -> Bool
 checkVoteApplication ctx collectionAsset datum voters =
   let txInfo = scriptContextTxInfo ctx
       outputs = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumBox = getBountyDatum txInfo (getOutput outputs collectionAsset)
+      datumBox = findOutputForClass collectionAsset outputs >>= getBountyDatum txInfo
    in assetContinues ctx continuingOutputs collectionAsset
         && validateCollectionChange txInfo voters datum datumBox
 
 -- - Are there enough voters in the list
 -- - There's only one collectionAsset present as input and it is attached to a valid datum value for usage.
 -- - The value attached to the PotDatum is sent to the
-{-# INLINEABLE checkSpending #-}
+{-# INLINABLE checkSpending #-}
 checkSpending :: ScriptContext -> Bounty -> Bool
 checkSpending ctx bounty =
   let txInfo = scriptContextTxInfo ctx
       txIns = txInfoInputs txInfo
       outputs = txInfoOutputs txInfo
       continuingOutputs = getContinuingOutputs ctx
-      datumBox = getBountyDatum txInfo (getOutput outputs (collectionToken bounty))
+      datumBox = findOutputForClass (collectionToken bounty) outputs >>= getBountyDatum txInfo
       potTxOut = getOutputPDatum txInfo outputs
-      potBox = getBountyDatum txInfo potTxOut
+      potBox = potTxOut >>= getBountyDatum txInfo
       txInValues = [txOutValue $ txInInfoResolved txIn | txIn <- txIns]
    in validateUseOfPot bounty potTxOut potBox datumBox
 
 -- We only can have one CollectionDatum/Token - We need to implement these - definitely.
 -- We only can have one
 
-{-# INLINEABLE bountyScript #-}
+{-# INLINABLE bountyScript #-}
 bountyScript :: Bounty -> BountyDatum -> BountyAction -> ScriptContext -> Bool
 bountyScript bounty datum action ctx = case datum of
   CollectionMaker -> case action of
