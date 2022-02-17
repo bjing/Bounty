@@ -56,7 +56,7 @@ import           PlutusTx.Prelude     hiding (Semigroup (..), unless)
 import           Prelude              (Semigroup (..), Show, String, show)
 import           Text.Printf          (printf)
 
-{-# INLINEABLE mkPolicy #-}
+{-# INLINABLE mkPolicy #-}
 mkPolicy :: AssetClass -> BuiltinData -> ScriptContext -> Bool
 mkPolicy asset _ ctx =
   mintedAmount < 0
