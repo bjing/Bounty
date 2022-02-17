@@ -18,6 +18,8 @@
 {-# LANGUAGE DeriveAnyClass        #-}
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NoImplicitPrelude     #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
@@ -25,45 +27,45 @@
 {-# LANGUAGE TypeApplications      #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE TypeOperators         #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Bounty where
 
-import           Prelude                (String, show, Show)
-import           Control.Monad          hiding (fmap)
-import           PlutusTx.Maybe
-import qualified Data.Map               as Map
-import           Data.Text              (Text)
-import           Data.Void              (Void)
-import           Plutus.Contract        as Contract
+import           Control.Monad        hiding (fmap)
+import           Data.Aeson           (FromJSON, ToJSON)
+import           Data.List            (intersect, union)
+import qualified Data.Map             as Map
+import           Data.String          (IsString (..))
+import           Data.Text            (Text)
+import           Data.Void            (Void)
+import           GHC.Generics         (Generic)
+import           Ledger               hiding (singleton)
+import           Ledger.Ada           as Ada
+import           Ledger.Constraints   as Constraints
+import qualified Ledger.Contexts      as Validation
+import           Ledger.Credential
+import           Ledger.Index         as Index
+import qualified Ledger.Typed.Scripts as Scripts
+import           Ledger.Value         as Value
+import           Playground.Contract  (NonEmpty (..), ToSchema,
+                                       ensureKnownCurrencies, printJson,
+                                       printSchemas, stage)
+import           Playground.TH        (ensureKnownCurrencies, mkKnownCurrencies,
+                                       mkSchemaDefinitions)
+import           Playground.Types     (KnownCurrency (..))
+import           Plutus.Contract      as Contract
 import qualified PlutusTx
 import           PlutusTx.IsData
-import           PlutusTx.Prelude       hiding (Semigroup(..), unless)
-import           Ledger                 hiding (singleton)
-import           Ledger.Credential
-import           Ledger.Ada             as Ada
-import           Ledger.Constraints     as Constraints
-import           Ledger.Index           as Index
-import qualified Ledger.Typed.Scripts   as Scripts
-import qualified Ledger.Contexts                   as Validation
-import           Ledger.Value           as Value
-import           Playground.Contract    (printJson, printSchemas, ensureKnownCurrencies, stage, ToSchema, NonEmpty(..) )
-import           Playground.TH          (mkKnownCurrencies, mkSchemaDefinitions, ensureKnownCurrencies)
-import           Playground.Types       (KnownCurrency (..))
-import           Prelude                (Semigroup (..))
-import           Text.Printf            (printf)
-import           GHC.Generics         (Generic)
-import           Data.String          (IsString (..))
-import           Data.Aeson           (ToJSON, FromJSON)
-import           Data.List              (union, intersect)
+import           PlutusTx.Maybe
+import           PlutusTx.Prelude     hiding (Semigroup (..), unless)
+import           Prelude              (Semigroup (..), Show, String, show)
+import           Text.Printf          (printf)
 
 data Bounty = Bounty
     { expiration           :: !POSIXTime
     , voters               :: ![PubKeyHash]
     , requiredVotes        :: !Integer
     , collectionMakerClass :: !AssetClass
-    , collectionToken :: !AssetClass
+    , collectionToken      :: !AssetClass
     } deriving (Show, Generic, FromJSON, ToJSON)
 
 PlutusTx.makeIsDataIndexed ''Bounty [ ('Bounty, 0) ]
@@ -94,7 +96,8 @@ PlutusTx.makeIsDataIndexed ''BountyDatum [ ('CollectionMaker, 0)
                                          ]
 PlutusTx.makeLift ''BountyDatum
 
-data BountyAction = ApplyVote | CreateCollection Collection | SpendAction -- | Return -- TODO we need to make this endpoint a reality as well.
+ -- | Return -- TODO we need to make this endpoint a reality as well.
+data BountyAction = ApplyVote | CreateCollection Collection | SpendAction
     deriving (Show, Generic, FromJSON, ToJSON)
 
 PlutusTx.makeIsDataIndexed ''BountyAction [ ('ApplyVote,        0)
@@ -172,8 +175,8 @@ correctCollection o c = case (destination c) of
     PubKeyCredential opkh -> pkh == opkh
     _                     -> False
   ScriptH vh -> case (addressCredential (txOutAddress o)) of
-    ScriptCredential ovh  -> vh == ovh
-    _                     -> False
+    ScriptCredential ovh -> vh == ovh
+    _                    -> False
 
 -- We need to make sure that the spending path is correct for the PotDatum TxOut TODO
 {-# INLINABLE validateUseOfPot #-}
@@ -246,7 +249,7 @@ validPotDatum md = case md of
 
 -- - Collection maker class come and go
 -- - CollectionDatum value starts with an empty voter list.
--- - 
+-- -
 {-# INLINABLE checkCreateCollection #-}
 checkCreateCollection :: ScriptContext -> BountyDatum -> AssetClass -> AssetClass -> Bool
 checkCreateCollection ctx collection makerAsset collectionAsset =
@@ -277,9 +280,9 @@ checkVoteApplication ctx collectionAsset datum voters =
     assetContinues ctx continuingOutputs collectionAsset &&
     validateCollectionChange txInfo voters datum datumBox
 
--- - Are there enough voters in the list 
+-- - Are there enough voters in the list
 -- - There's only one collectionAsset present as input and it is attached to a valid datum value for usage.
--- - The value attached to the PotDatum is sent to the 
+-- - The value attached to the PotDatum is sent to the
 {-# INLINABLE checkSpending #-}
 checkSpending :: ScriptContext -> Bounty -> Bool
 checkSpending ctx bounty =
@@ -296,7 +299,7 @@ checkSpending ctx bounty =
     validateUseOfPot bounty potTxOut potBox datumBox
 
 -- We only can have one CollectionDatum/Token - We need to implement these - definitely.
--- We only can have one 
+-- We only can have one
 
 {-# INLINABLE bountyScript #-}
 bountyScript :: Bounty -> BountyDatum -> BountyAction -> ScriptContext -> Bool
@@ -309,8 +312,8 @@ bountyScript bounty datum action ctx = case datum of
         SpendAction        -> checkSpending ctx bounty
         _                  -> False
     PotDatum          -> case action of
-        SpendAction        -> checkSpending ctx bounty
-        _                  -> False
+        SpendAction -> checkSpending ctx bounty
+        _           -> False
 
 bountyValidatorInstance :: Bounty -> Scripts.TypedValidator Bountying
 bountyValidatorInstance bounty = Scripts.mkTypedValidator @Bountying
