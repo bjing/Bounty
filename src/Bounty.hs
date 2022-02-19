@@ -185,9 +185,9 @@ containsPot info o =
     Just PotDatum -> True
     _             -> False
 
-{-# INLINABLE getOutputPDatum #-}
-getOutputPDatum :: TxInfo -> [TxOut] -> Maybe TxOut
-getOutputPDatum info txOuts = find (containsPot info) txOuts
+{-# INLINABLE findOutputPDatum #-}
+findOutputPDatum :: TxInfo -> [TxOut] -> Maybe TxOut
+findOutputPDatum info = find (containsPot info)
 
 {-# INLINABLE startCollectionDatum #-}
 startCollectionDatum :: Maybe BountyDatum -> Bool
@@ -245,7 +245,7 @@ checkSpending ctx bounty =
   let txInfo = scriptContextTxInfo ctx
       txOuts = txInfoOutputs txInfo
       datumBox = findOutputForClass (bCollectionToken bounty) txOuts >>= findBountyDatum txInfo
-      potTxOut = getOutputPDatum txInfo txOuts
+      potTxOut = findOutputPDatum txInfo txOuts
       potBox = potTxOut >>= findBountyDatum txInfo
    in validateUseOfPot bounty potTxOut potBox datumBox
 
